@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Christmas Tree</title>
+     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            background: radial-gradient(circle at center, #0b1026 0%, #000000 100%);
+            overflow: hidden;
+            font-family: 'Great Vibes', cursive;
+        }
+        canvas {
+            display: block;
+        }
+
+        #greeting {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            transform: translateY(-50%);
+            color: #fff;
+            font-size: 5rem;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 0;
+            animation: textGlow 3s ease-in-out infinite alternate, fadeIn 2s ease-out forwards;
+            text-shadow: 
+                0 0 10px #00bfff,
+                0 0 20px #00bfff,
+                0 0 40px #fff;
+        }
+
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(-40%); }
+            100% { opacity: 1; transform: translateY(-50%); }
+        }
+
+        @keyframes textGlow {
+            0% { text-shadow: 0 0 10px #00bfff, 0 0 20px #00bfff; }
+            100% { text-shadow: 0 0 20px #fff, 0 0 40px #00bfff, 0 0 60px #00bfff; }
+        }
+
+        @media (max-width: 768px) {
+            #greeting {
+                font-size: 3rem;
+                left: 50%;
+                top: 15%;
+                transform: translate(-50%, -50%);
+                text-align: center;
+                width: 100%;
+            }
+            @keyframes fadeIn {
+                0% { opacity: 0; transform: translate(-50%, -40%); }
+                100% { opacity: 1; transform: translate(-50%, -50%); }
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="greeting">Merry Christmas</div>
+    <canvas id="scene"></canvas>
+
+    <script>
+        const canvas = document.getElementById('scene');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        const TREE_PARTICLE_COUNT = 3000; 
+        const FLOOR_PARTICLE_COUNT = 600; 
+        const TRUNK_PARTICLE_COUNT = 400; //trunk 
+        const SNOW_COUNT = 200;
+        const TREE_HEIGHT = 450;
+        const TREE_BASE_RADIUS = 180;
+        const TRUNK_HEIGHT = 60; 
+        const TRUNK_RADIUS = 30;
+        
+        const PALETTE = [
+            '#FFFFFF', 
+            '#E0F7FA', 
+            '#87CEFA', 
+            '#00BFFF', 
+            '#1E90FF'  
+        ];
+
+        const TRUNK_PALETTE = [
+            '#4a3728', // Dark
+            '#2f2218', // Dp Brown
+            '#5D4037', // Brown
+            '#3E2723'  // Dp Brown
+        ];
+
+        let particles = [];
+        let snowParticles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function getRandomColor() {
+            return PALETTE[Math.floor(Math.random() * PALETTE.length)];
+        }
+        
+        function getTrunkColor() {
+            return TRUNK_PALETTE[Math.floor(Math.random() * TRUNK_PALETTE.length)];
+        }
+
+        // 3D 
+        class Particle {
+            constructor(type, index) {
+                this.type = type;
+                this.index = index; 
+                this.reset();
+            }
+            reset() {
+                this.size = Math.random() * 2 + 0.5;
+                if (this.type === 'tree') {
+                    this.color = getRandomColor();
+                    const progress = this.index / TREE_PARTICLE_COUNT; 
+                    this.y = -TREE_HEIGHT * progress - TRUNK_HEIGHT + 20;
+                    const currentRadius = (TREE_BASE_RADIUS * (1 - progress)) + (Math.random() * 20 - 10);
+                    this.radius = Math.max(0, currentRadius);
+                    this.baseAngle = this.index * 137.5; 
+                    this.angleOffset = Math.random() * Math.PI * 2;
+                } else if (this.type === 'trunk') {
+                    this.color = getTrunkColor();
+                    this.size = Math.random() * 2 + 1;
+                    this.y = -(Math.random() * TRUNK_HEIGHT);
+                    this.radius = Math.random() * TRUNK_RADIUS;
+                    
+                    this.baseAngle = Math.random() * Math.PI * 2;
+                    this.angleOffset = 0;
+                } else if (this.type === 'floor') {
+                    this.color = getRandomColor();
+                    this.y = 10; 
+                    const maxRadius = TREE_BASE_RADIUS * 3;
+                    const minRadius = TREE_BASE_RADIUS * 0.5;
+                    
+                    this.radius = minRadius + Math.random() * (maxRadius - minRadius);
+                    this.baseAngle = Math.random() * Math.PI * 2;
+                    this.angleOffset = 0;
+                }
+            }
+            update(rotationSpeed) {
+                const currentAngle = this.baseAngle + this.angleOffset + rotationSpeed;
+                
+                const x3d = Math.cos(currentAngle) * this.radius;
+                const z3d = Math.sin(currentAngle) * this.radius;  
+                const fov = 350;
+                const scale = fov / (fov + z3d + 300); 
+    
+                this.x2d = x3d * scale + width / 2;
+                const yBase = (width < 768) ? height / 2 + 150 : height / 2 + 120;
+                this.y2d = this.y * scale + yBase; 
+                this.scale = scale; 
+                this.z = z3d; 
+            }
+            draw() {
+                const depthAlpha = 1 - (this.z + TREE_BASE_RADIUS) / (TREE_BASE_RADIUS * 2.5);
+                let finalAlpha = Math.max(0.1, Math.min(1, depthAlpha));
+                if(this.type === 'trunk') finalAlpha = Math.max(0.6, finalAlpha);
+                ctx.globalAlpha = finalAlpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x2d, this.y2d, this.size * this.scale, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1; 
+            }
+        }
+        //BG:Snow
+        class Snow {
+            constructor() {
+                this.init();
+            }
+            init() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height - height;
+                this.size = Math.random() * 1.5 + 0.5;
+                this.speed = Math.random() * 1 + 0.5;
+                this.opacity = Math.random() * 0.5 + 0.2;
+            }
+            update() {
+                this.y += this.speed;
+                if (this.y > height) this.init();
+            }
+            draw() {
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        function init() {
+            particles = [];
+            snowParticles = [];
+            for (let i = 0; i < TRUNK_PARTICLE_COUNT; i++) {
+                particles.push(new Particle('trunk', i));
+            }
+            // make Tree
+            for (let i = 0; i < TREE_PARTICLE_COUNT; i++) {
+                particles.push(new Particle('tree', i));
+            }
+            // make Floor
+            for (let i = 0; i < FLOOR_PARTICLE_COUNT; i++) {
+                particles.push(new Particle('floor', i));
+            }
+            // make Snow
+            for (let i = 0; i < SNOW_COUNT; i++) {
+                snowParticles.push(new Snow());
+            }
+        }
+        let rotation = 0;
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; 
+            ctx.fillRect(0, 0, width, height);
+            ctx.globalCompositeOperation = 'lighter';
+            rotation += 0.005; 
+            particles.forEach(p => p.update(rotation));
+            particles.sort((a, b) => b.z - a.z); 
+            particles.forEach(p => p.draw());
+            drawStar(rotation);
+            ctx.globalCompositeOperation = 'source-over';
+            snowParticles.forEach(s => {
+                s.update();
+                s.draw();
+            });
+            requestAnimationFrame(animate);
+        }
+
+        function drawStar(rot) {
+            const fov = 350;
+            const scale = fov / (fov + 0 + 300);
+            const x = width / 2;
+            const yBase = (width < 768) ? height / 2 + 150 : height / 2 + 120;
+            const y = (-TREE_HEIGHT - TRUNK_HEIGHT + 20) * scale + yBase;
+            const twinkle = Math.random() * 10;
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, 40 + twinkle);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.2, 'rgba(0, 191, 255, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(0, 191, 255, 0.2)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, y, 60, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        init();
+        animate();
+    </script>
+</body>
+</html>
